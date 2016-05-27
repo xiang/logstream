@@ -77,7 +77,10 @@ loop do
           type = json['type']
           message = json['message']
           puts "#{host} - #{type} - #{message}" if json['type'] == log && hosts.include?(host)
-          break if interrupt == true
+          if interrupt == true
+            sock.close
+            break
+          end
         end
       else
         puts "Please set all filters"

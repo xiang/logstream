@@ -36,33 +36,38 @@ end
 cli = HighLine.new
 apps = databag_show('srm_components')
 
-app, env, log = ""
+app = env = log = 'unset'
 loop do 
   trap("INT") { puts "\nExiting..." ; exit }
 
   cli.choose do |menu|
-    menu.header = "app: #{app}    env: #{env}     log: #{log}"
+    puts "\napp: #{app}    env: #{env}     log: #{log}"
+    menu.header = 'Select filter'
     menu.choice(:app) do
       app = cli.choose do |app_menu|
-        app_menu.header = "Select app"
+        app_menu.header = 'Select app'
         app_menu.layout = :one_line
         app_menu.choices(*apps)
       end
     end
     menu.choice(:env) do
       env = cli.choose do |env_menu|
-        env_menu.header = "Select environment"
+        env_menu.header = 'Select environment'
         env_menu.choices('staging', 'integration')
       end
     end
     menu.choice(:log) do
-      log = cli.choose do |log_menu|
-        log_menu.header = "Select log"
-        log_menu.choices( *%W[#{env} unicorn nginx resque subscribers notifications-rmq] )
+      if env == 'unset'
+        puts 'Please select env before setting log'
+      else 
+        log = cli.choose do |log_menu|
+          log_menu.header = 'Select log'
+          log_menu.choices( *%W[#{env} unicorn nginx resque subscribers notifications-rmq] )
+        end
       end
     end
-    menu.choice(:done) do
-      if app && env && log
+    menu.choice(:start) do
+      if [app, env, log].all? {|filter| filter != 'unset'}
         hosts = node_search("roles:srm_#{app} AND chef_environment:#{env}")
         
         sock = TCPSocket.new('localhost', 5555)
@@ -70,17 +75,14 @@ loop do
         interrupt = false
         trap("INT") { interrupt = true }
 
-        puts "Starting log stream..."
-        while line = sock.gets # Read lines from socket
-          json = JSON.parse(line)         # and print them
+        puts "Starting log stream. Press CTRL^C to stop"
+        while line = sock.gets # read lines from socket
+          json = JSON.parse(line) # and print them
           host = json['host']
           type = json['type']
           message = json['message']
           puts "#{host} - #{type} - #{message}" if json['type'] == log && hosts.include?(host)
-          if interrupt == true
-            sock.close
-            break
-          end
+          break if interrupt == true
         end
       else
         puts "Please set all filters"
